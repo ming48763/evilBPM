@@ -95,7 +95,7 @@
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
   }
 
-  resizeCanvas();
+  window.addEventListener('load', resizeCanvas);
   window.addEventListener('resize', resizeCanvas);
 
   let audioCtx, micStream, processor;
@@ -179,20 +179,70 @@
     }
   }
 
-  function drawLoop(){
-    const w = canvas.width / (window.devicePixelRatio || 1);
-    const h = canvas.height / (window.devicePixelRatio || 1);
-    ctx.fillStyle = "#071023";
-    ctx.fillRect(0, 0, w, h);
+let recentEnergy = []; // 新增，用來存音量變化
 
-    ctx.strokeStyle = "#12304b";
-    for (let i=0;i<4;i++){
-      const y = h*(i+1)/5;
-      ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke();
+function processAudio(buf, time){
+  let sum = 0;
+  for (let i=0; i<buf.length; i++) sum += buf[i]*buf[i];
+  const rms = Math.sqrt(sum / buf.length);
+
+  // 👉 儲存音量變化供繪圖使用
+  recentEnergy.push(rms);
+  if (recentEnergy.length > 300) recentEnergy.shift();
+
+  const now = time;
+  if (!processAudio.energyHistory) processAudio.energyHistory = [];
+  processAudio.energyHistory.push({t:now, e:rms});
+  while (processAudio.energyHistory.length && now - processAudio.energyHistory[0].t > 2)
+    processAudio.energyHistory.shift();
+
+  const energies = processAudio.energyHistory.map(o=>o.e);
+  const baseline = median(energies);
+  const std = stddev(energies);
+  const threshold = baseline + Math.max(0.001, std*1.2);
+
+  if (rms > threshold && (now - lastPeakTime) > 0.06){
+    const lastFew = energies.slice(-4);
+    if (rms >= Math.max(...lastFew)){
+      lastPeakTime = now;
+      registerOnset(now);
     }
-
-    requestAnimationFrame(drawLoop);
   }
+}
+
+function drawLoop(){
+  const w = canvas.width / (window.devicePixelRatio || 1);
+  const h = canvas.height / (window.devicePixelRatio || 1);
+  ctx.fillStyle = "#071023";
+  ctx.fillRect(0, 0, w, h);
+
+  // 畫水平線
+  ctx.strokeStyle = "#12304b";
+  for (let i=0; i<4; i++){
+    const y = h*(i+1)/5;
+    ctx.beginPath();
+    ctx.moveTo(0,y);
+    ctx.lineTo(w,y);
+    ctx.stroke();
+  }
+
+  // ✅ 畫出音量波形
+  if (recentEnergy.length > 1){
+    ctx.beginPath();
+    ctx.strokeStyle = "#3b82f6";
+    const step = w / (recentEnergy.length - 1);
+    for (let i = 0; i < recentEnergy.length; i++){
+      const val = recentEnergy[i];
+      const y = h - val * h * 10; // 放大音量波形
+      if (i === 0) ctx.moveTo(0, y);
+      else ctx.lineTo(i * step, y);
+    }
+    ctx.stroke();
+  }
+
+  requestAnimationFrame(drawLoop);
+}
+
 
   function median(arr){
     if (!arr.length) return 0;
