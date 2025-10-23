@@ -1,16 +1,73 @@
 <!doctype html>
-<html>
+<html lang="zh-Hant">
 <head>
   <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>鼓手即時 BPM 偵測與視覺化</title>
   <style>
-    body { font-family: "Noto Sans TC", sans-serif; background:#0f1720; color:#e6eef8; margin:20px; }
-    button { padding:8px 14px; border:0; border-radius:8px; background:#2563eb; color:white; cursor:pointer; font-size:16px; }
-    #bpm { font-size:42px; margin-top:12px; }
-    .small { color:#99b3d6; font-size:13px; }
-    canvas { background:#071023; border-radius:8px; width:100%; max-width:900px; height:240px; margin-top:14px; }
-    #beatDot { width:20px; height:20px; border-radius:50%; background:#1e3a8a; margin-top:12px; transition:background 0.1s; }
-    #beatDot.active { background:#60a5fa; box-shadow:0 0 15px #3b82f6; }
+    body {
+      font-family: "Noto Sans TC", sans-serif;
+      background: #0f1720;
+      color: #e6eef8;
+      margin: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    h2 {
+      font-size: clamp(1.4rem, 4vw, 2rem);
+      text-align: center;
+    }
+
+    button {
+      padding: 10px 20px;
+      border: 0;
+      border-radius: 8px;
+      background: #2563eb;
+      color: white;
+      cursor: pointer;
+      font-size: clamp(0.9rem, 2vw, 1.2rem);
+      margin-top: 10px;
+    }
+
+    #bpm {
+      font-size: clamp(1.8rem, 5vw, 2.8rem);
+      margin-top: 14px;
+      text-align: center;
+    }
+
+    .small {
+      color: #99b3d6;
+      font-size: clamp(0.8rem, 2vw, 1rem);
+      max-width: 600px;
+      text-align: center;
+      margin-top: 8px;
+      line-height: 1.5;
+    }
+
+    canvas {
+      background: #071023;
+      border-radius: 8px;
+      width: 90vw;
+      max-width: 900px;
+      height: 240px;
+      margin-top: 14px;
+    }
+
+    #beatDot {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: #1e3a8a;
+      margin-top: 12px;
+      transition: background 0.1s, box-shadow 0.1s;
+    }
+
+    #beatDot.active {
+      background: #60a5fa;
+      box-shadow: 0 0 15px #3b82f6;
+    }
   </style>
 </head>
 <body>
@@ -32,33 +89,33 @@
   function resizeCanvas(){
     const w = canvas.clientWidth;
     const h = 240;
-    canvas.width = w * devicePixelRatio;
-    canvas.height = h * devicePixelRatio;
-    ctx.scale(devicePixelRatio, devicePixelRatio);
+    const ratio = window.devicePixelRatio || 1;
+    canvas.width = w * ratio;
+    canvas.height = h * ratio;
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
   }
+
   resizeCanvas();
   window.addEventListener('resize', resizeCanvas);
 
   let audioCtx, micStream, processor;
   let onsetTimestamps = [];
   let lastPeakTime = 0;
-  let bpmHistory = [];
-
   const historySeconds = 20;
 
-  startBtn.onclick = async ()=>{
+  startBtn.onclick = async ()=> {
     if (!audioCtx) await startAudio();
     else stopAudio();
   };
 
   async function startAudio(){
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const stream = await navigator.mediaDevices.getUserMedia({ audio:true });
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     micStream = audioCtx.createMediaStreamSource(stream);
     processor = audioCtx.createScriptProcessor(512, 1, 1);
     micStream.connect(processor);
     processor.connect(audioCtx.destination);
-    processor.onaudioprocess = e=>{
+    processor.onaudioprocess = e => {
       const buf = e.inputBuffer.getChannelData(0);
       processAudio(buf, audioCtx.currentTime);
     };
@@ -67,19 +124,18 @@
   }
 
   function stopAudio(){
-    processor.disconnect();
-    micStream.disconnect();
-    audioCtx.close();
+    if (processor) processor.disconnect();
+    if (micStream) micStream.disconnect();
+    if (audioCtx) audioCtx.close();
     audioCtx = null;
     startBtn.textContent = "開始";
     bpmVal.textContent = "--";
     onsetTimestamps = [];
-    bpmHistory = [];
   }
 
   function processAudio(buf, time){
     let sum = 0;
-    for (let i=0;i<buf.length;i++) sum += buf[i]*buf[i];
+    for (let i=0; i<buf.length; i++) sum += buf[i]*buf[i];
     const rms = Math.sqrt(sum / buf.length);
     const now = time;
 
@@ -107,58 +163,33 @@
     while (onsetTimestamps.length && (t - onsetTimestamps[0]) > historySeconds)
       onsetTimestamps.shift();
 
-    // 🔵 閃爍視覺回饋
     beatDot.classList.add("active");
     setTimeout(()=>beatDot.classList.remove("active"), 100);
 
-    // 計算 BPM (取最近 8 次峰值間隔平均)
     if (onsetTimestamps.length >= 2){
       const intervals = [];
-      for (let i = onsetTimestamps.length-1; i > 0 && intervals.length < 8; i--){
+      for (let i = onsetTimestamps.length - 1; i > 0 && intervals.length < 8; i--){
         intervals.push(onsetTimestamps[i] - onsetTimestamps[i-1]);
       }
       const avgInterval = intervals.reduce((a,b)=>a+b,0)/intervals.length;
       const bpm = 60 / avgInterval;
       if (bpm >= 40 && bpm <= 240){
-        bpmHistory.push(bpm);
-        bpmVal.textContent = bpm.toFixed(2);
+        bpmVal.textContent = bpm.toFixed(1);
       }
     }
   }
 
   function drawLoop(){
-    const w = canvas.width/devicePixelRatio;
-    const h = canvas.height/devicePixelRatio;
+    const w = canvas.width / (window.devicePixelRatio || 1);
+    const h = canvas.height / (window.devicePixelRatio || 1);
     ctx.fillStyle = "#071023";
-    ctx.fillRect(0,0,w,h);
+    ctx.fillRect(0, 0, w, h);
 
-    const now = audioCtx ? audioCtx.currentTime : 0;
     ctx.strokeStyle = "#12304b";
     for (let i=0;i<4;i++){
       const y = h*(i+1)/5;
       ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke();
     }
-
-    ctx.strokeStyle = "#60a5fa";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    let started = false;
-    for (let i=1;i<onsetTimestamps.length;i++){
-      const t = onsetTimestamps[i];
-      const prev = onsetTimestamps[i-1];
-      const interval = t - prev;
-      const bpm = 60 / interval;
-      if (bpm < 40 || bpm > 240) continue;
-      const x = w*(1 - (now - t)/historySeconds);
-      const y = h*(1 - (bpm - 40)/(240-40));
-      if (!started){ ctx.moveTo(x,y); started=true; } else ctx.lineTo(x,y);
-    }
-    ctx.stroke();
-
-    ctx.fillStyle = "#9fb4d8";
-    ctx.font = "12px sans-serif";
-    ctx.fillText("240 BPM", 8, 14);
-    ctx.fillText("40 BPM", 8, h-6);
 
     requestAnimationFrame(drawLoop);
   }
